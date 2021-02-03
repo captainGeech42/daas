@@ -40,7 +40,7 @@ def auth_required(f):
 # generate an account if there aren't any
 # if there are any rows in the `user` table, this should 403
 @auth.route("/auth/setup_acc", methods=["POST"])
-def gen_first_acc():
+def setup_acc():
     num_rows = db.session.query(User).count()
 
     if num_rows > 0:
@@ -58,7 +58,7 @@ def gen_first_acc():
 # add a new user
 @auth.route("/auth/register", methods=["POST"])
 @auth_required
-def new_acc():
+def register():
     body = request.json
 
     if body is None:
