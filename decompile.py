@@ -1,6 +1,11 @@
 #! /usr/bin/env python
 # -*- coding: UTF-8 -*-
 # Author : <github.com/tintinweb>
+
+"""
+This script was written by tintinweb, and is from https://github.com/tintinweb/ida-batch_decompile
+"""
+
 """
 IdaBatchDecompile Plugin and Script adds annotation and batch decompilation functionality to IDA Pro
 

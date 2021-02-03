@@ -1,3 +1,0 @@
-[submodule "ida-batch_decompile"]
-	path = ida-batch_decompile
-	url = https://github.com/tintinweb/ida-batch_decompile.git

@@ -41,6 +41,6 @@ RUN apt-get -y install --fix-missing \
 RUN apt-get -y install python-pip
 RUN pip2 install --upgrade pip
 
-COPY ida-batch_decompile/ida_batch_decompile.py /
+COPY decompile.py /
 COPY script.py /
 COPY test/prog /
