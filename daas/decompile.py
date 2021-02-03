@@ -1,6 +1,7 @@
 import base64
 import os
 import random
+import shutil
 import string
 import thread
 
@@ -111,10 +112,18 @@ def get_decompilation(id=0):
     if binary.status != DecompilationStatus.completed:
         return {"status": "err", "msg": "decompilation not finished, did you check the status?"}, 400
 
+    if binary.status == DecompilationStatus.removed:
+        return {"status": "err", "msg": "decompilation was already returned, please re-request"}, 400
+
     try:
         with open(os.path.join(binary.output_dir, DECOMP_OUTPUT), "r") as f:
             decomp = f.read()
     except FileNotFoundError:
         return {"status": "err", "msg": "decompilation not found"}, 500
+
+    # delete binary to prevent disk from filling up
+    shutil.rmtree(binary.output_dir)
+    binary.status = DecompilationStatus.removed
+    db.session.commit()
 
     return {"status": "ok", "output": base64.b64encode(decomp).decode()}

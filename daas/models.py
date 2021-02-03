@@ -15,6 +15,7 @@ class DecompilationStatus(enum.Enum):
     queued = 1
     completed = 2
     failed = 3
+    removed = 4
 
 class Binary(db.Model):
     id = Column(Integer, primary_key=True)
