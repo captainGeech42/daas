@@ -1,12 +1,120 @@
 import base64
+import os
+import random
+import string
+import thread
 
-from flask import Blueprint
+from flask import Blueprint, request
 
 from .exts import db
-from .models import User
+from .models import Binary, DecompilationStatus
+from .auth import auth_required
+
+BINARY = "binary"
+DECOMP_OUTPUT = "output.c"
 
 decompile = Blueprint("decompile", __name__)
 
-@decompile.route("/request_decomp")
+def _decompile_binary(id, bindir):
+    row = Binary.query.filter_by(id=id).first()
+    if row is None:
+        return False
+
+    try:
+        input_path = os.path.join(bindir, BINARY)
+        output_path = os.path.join(bindir, DECOMP_OUTPUT)
+
+        # decompile with a 5 minute timeout
+        subprocess.run(f'/ida/idat64 -A -S"/decompile.py \\"--output\\" \\"{output_path}\\"" {input_path}', env={"TERM":"XTERM"}, timeout=300)
+
+        # decompliation succeeded
+        row.status = DecompilationStatus.completed
+    except subprocess.TimeoutExpired:
+        # decompilation timed out
+        row.status = DecompilationStatus.failed
+
+    # save row update
+    db.session.commit()
+
+def _spawn_decompilation_thread(id, bindir):
+    try:
+        thread.start_new_thread(_decompile_binary, (id, bindir))
+    except:
+        return False
+
+    return True
+
+def _gen_dir():
+    keyspace = string.ascii_letters
+
+    dirname = f"/tmp/" + "".join([random.choice(keyspace) for _ in range(10)])
+
+    if not os.path.isdir(dirname):
+        os.mkdir(dirname)
+        return dirname
+    else:
+        return _gen_dir()
+
+@decompile.route("/request_decomp", methods=["POST"])
+@auth_required
 def request_decomp():
-    pass
+    # parse out the binary
+
+    body = request.json
+
+    if body is None:
+        return {"status": "error", "msg": "need to specify binary and requestor"}, 400
+
+    if "binary" not in body.keys():
+        return {"status": "error", "msg": "need to specify binary"}, 400
+
+    if "requestor" not in body.keys():
+        return {"status": "error", "msg": "need to specify binary"}, 400
+
+    binary = base64.b64decode(body["binary"])
+
+    # save the binary to disk
+    dirname = _gen_dir()
+
+    with open(os.path.join(dirname, BINARY), "wb") as f:
+        f.write(binary)
+
+    # add to database
+    rec = Binary(requestor=body["requestor"], status=DecompilationStatus.queued, output_dir=dirname)
+    db.session.add(rec)
+    db.session.commit()
+
+    # spawn thread
+    if _spawn_decompilation(rec.id, dirname):
+        return {"status": "ok", "msg": "started analysis"}
+    else:
+        return {"status": "err", "msg": "failed to start analysis"}, 500
+
+@decompile.route("/status/<id>")
+@auth_required
+def status(id=0):
+    binary = Binary.query.filter_by(id=id).first()
+
+    if not binary:
+        return {"status": "err", "msg": f"failed to find binary {id}"}, 404
+
+    return {"status": "ok", "analysis_status": binary.status}
+
+@decompile.route("/get_decompilation/<id>")
+@auth_required
+def get_decompilation(id=0):
+    binary = Binary.query.filter_by(id=id).first()
+
+    if not binary:
+        return {"status": "err", "msg": f"failed to find binary {id}"}, 404
+
+    if binary.status != DecompilationStatus.completed:
+        return {"status": "err", "msg": "decompilation not finished, did you check the status?"}, 400
+
+    try:
+        with open(os.path.join(binary.output_dir, DECOMP_OUTPUT), "r") as f:
+            decomp = f.read()
+    except FileNotFoundError:
+        return {"status": "err", "msg": "decompilation not found"}, 500
+
+    return {"status": "ok", "output": base64.b64encode(decomp).decode()}
