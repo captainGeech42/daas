@@ -1,0 +1,7 @@
+version: '3'
+
+services:
+  daas:
+    build: .
+    volumes:
+      - /home/zander/ida-7.2:/ida
