@@ -3,7 +3,8 @@ import os
 import random
 import shutil
 import string
-import thread
+import subprocess
+import _thread
 
 from flask import Blueprint, request
 
@@ -17,29 +18,36 @@ DECOMP_OUTPUT = "output.c"
 decompile = Blueprint("decompile", __name__)
 
 def _decompile_binary(id, bindir):
-    row = Binary.query.filter_by(id=id).first()
-    if row is None:
-        return False
+    # ATTN: DB CODE SHOULD BE MADE MULTITHREADED
+    # CURRENTLY IT IS NOT BECAUSE I AM LAZY
+    # WHEN IT BECOMES MT COMPATIBLE, UNCOMMENT THIS STUFF
+
+    #row = Binary.query.filter_by(id=id).first()
+    #if row is None:
+    #    return False
 
     try:
         input_path = os.path.join(bindir, BINARY)
         output_path = os.path.join(bindir, DECOMP_OUTPUT)
 
         # decompile with a 5 minute timeout
-        subprocess.run(f'/ida/idat64 -A -S"/decompile.py \\"--output\\" \\"{output_path}\\"" {input_path}', env={"TERM":"XTERM"}, timeout=300)
+        #subprocess.run(["/ida/idat64", "-A", '-S"/decompile.py \\"--output\\" \\"{output_path}\\""', input_path], env={"TERM":"XTERM"}, timeout=300)
+        #subprocess.run(["/ida/idat64", "-A", f'-S"/decompile.py \\"--output\\" \\"{output_path}\\""', input_path], timeout=300)
+        os.system(f'/ida/idat64 -A -S"/decompile.py \\"--output\\" \\"{output_path}\\"" {input_path}')
 
         # decompliation succeeded
-        row.status = DecompilationStatus.completed
+        #row.status = DecompilationStatus.completed
     except subprocess.TimeoutExpired:
         # decompilation timed out
-        row.status = DecompilationStatus.failed
+        #row.status = DecompilationStatus.failed
+        pass
 
     # save row update
-    db.session.commit()
+    #db.session.commit()
 
 def _spawn_decompilation_thread(id, bindir):
     try:
-        thread.start_new_thread(_decompile_binary, (id, bindir))
+        _thread.start_new_thread(_decompile_binary, (id, bindir))
     except:
         return False
 
@@ -86,8 +94,8 @@ def request_decomp():
     db.session.commit()
 
     # spawn thread
-    if _spawn_decompilation(rec.id, dirname):
-        return {"status": "ok", "msg": "started analysis"}
+    if _spawn_decompilation_thread(rec.id, dirname):
+        return {"status": "ok", "msg": "started analysis", "id": rec.id}
     else:
         return {"status": "err", "msg": "failed to start analysis"}, 500
 
@@ -99,7 +107,18 @@ def status(id=0):
     if not binary:
         return {"status": "err", "msg": f"failed to find binary {id}"}, 404
 
-    return {"status": "ok", "analysis_status": binary.status}
+    # check if there is decomp
+    path = os.path.join(binary.output_dir, DECOMP_OUTPUT)
+    if os.path.isfile(path):
+        # see if the file has stuff
+        with open(path, "r") as f:
+            contents = f.read()
+
+        if len(contents.split()) > 10:
+            binary.status = DecompilationStatus.completed
+            db.session.commit()
+
+    return {"status": "ok", "analysis_status": str(binary.status).split(".")[1]}
 
 @decompile.route("/get_decompilation/<id>")
 @auth_required
@@ -126,4 +145,4 @@ def get_decompilation(id=0):
     binary.status = DecompilationStatus.removed
     db.session.commit()
 
-    return {"status": "ok", "output": base64.b64encode(decomp).decode()}
+    return {"status": "ok", "output": base64.b64encode(decomp.encode()).decode()}
