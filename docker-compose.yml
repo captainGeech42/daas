@@ -4,4 +4,18 @@ services:
   daas:
     build: .
     volumes:
-      - /home/zander/ida-7.2:/ida
+      #- /ida:/ida
+      - daas-db:/db
+        #- $HOME/.idapro/ida.reg:/root/.idapro/ida.reg
+    ports:
+      - 8000:8000
+    environment:
+      DB_URI: sqlite:////db/daas.py
+    networks:
+      - daas
+
+volumes:
+  daas-db:
+
+networks:
+  daas:

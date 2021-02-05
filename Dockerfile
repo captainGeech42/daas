@@ -1,18 +1,16 @@
-#FROM ubuntu:18.04
-#
-#RUN apt-get update -qq && apt-get install -y -qq libpython2.7
-
 # https://github.com/intezer/docker-ida/blob/master/ida-base/Dockerfile
-# This is the foundation for all language-stack images (see: https://hub.docker.com/_/buildpack-deps/)
-FROM buildpack-deps:jessie
+
+FROM debian:10
+
+ARG IDA_PASSWORD
 
 # Add 32 bit architecture support for IDA
 RUN dpkg --add-architecture i386 && apt-get -y update
 
 # Replace the python version in the original image with a 32-bit version, so when we install external libraries -
 # IDAPython (32bit) could import them
-RUN apt-get -y install python2.7-minimal:i386
-RUN apt-get -y install python2.7:i386
+RUN apt-get -y install python2.7-minimal:i386 python2.7:i386
+
 # Create a symlink for python for convenience (instead of typing python2.7)
 RUN link /usr/bin/python2.7 /usr/bin/python
 
@@ -29,18 +27,35 @@ RUN apt-get -y install --fix-missing \
     libstdc++6:i386 \
     libxext6:i386 \
     libxrender1:i386 \
-    lsb-core \
     python-dev \
-	libssl1.0.0 \
+	libssl1.1 \
 	libssl-dev
-
-#RUN wget http://security.debian.org/pool/updates/main/o/openssl/libssl0.9.8_0.9.8o-4squeeze14_i386.deb -P /installation
-#RUN dpkg -i /installation/libssl0.9.8_0.9.8o-4squeeze14_i386.deb
 
 # Install pip for python 2.7
 RUN apt-get -y install python-pip
 RUN pip2 install --upgrade pip
 
+RUN apt-get -y install python3 python3-pip
+RUN python3 -m pip install --upgrade pip
+RUN python3 -m pip install --upgrade setuptools
+
+# install IDA
+RUN mkdir /ida
+COPY ida.run /
+RUN chmod +x /ida.run
+RUN printf "\n\n\n\n\n\ny\n$IDA_PASSWORD\n/ida\ny\ny\n" | /ida.run
+RUN touch /ida/license.displayed
+
 COPY decompile.py /
-COPY script.py /
-COPY test/prog /
+
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+
+RUN mkdir /app
+COPY . /app/
+
+WORKDIR /app
+RUN python3 -m pip install -r requirements.txt
+
+EXPOSE 8000
+CMD flask db-init && gunicorn -w 2 -b 0.0.0.0:8000 "daas:create_app()"

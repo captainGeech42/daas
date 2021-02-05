@@ -1,2 +1,5 @@
 **/__pycache__
 daas.db
+ida.run
+.env
+test.py
